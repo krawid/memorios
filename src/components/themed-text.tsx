@@ -1,3 +1,4 @@
+import { forwardRef } from 'react';
 import { Platform, StyleSheet, Text, type TextProps } from 'react-native';
 
 import { Fonts, ThemeColor } from '@/constants/theme';
@@ -8,11 +9,19 @@ export type ThemedTextProps = TextProps & {
   themeColor?: ThemeColor;
 };
 
-export function ThemedText({ style, type = 'default', themeColor, ...rest }: ThemedTextProps) {
+// forwardRef: sin esto, un componente función no puede recibir `ref` — y hace falta poder
+// referenciar el Text nativo de verdad para fijar el foco de VoiceOver a mano
+// (AccessibilityInfo.setAccessibilityFocus) en pantallas sin cabecera, donde VoiceOver no
+// tiene ninguna pista fiable de a qué agarrarse al entrar.
+export const ThemedText = forwardRef<Text, ThemedTextProps>(function ThemedText(
+  { style, type = 'default', themeColor, ...rest },
+  ref,
+) {
   const theme = useTheme();
 
   return (
     <Text
+      ref={ref}
       style={[
         { color: theme[themeColor ?? 'text'] },
         type === 'default' && styles.default,
@@ -28,7 +37,7 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
       {...rest}
     />
   );
-}
+});
 
 const styles = StyleSheet.create({
   small: {
