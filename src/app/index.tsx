@@ -65,7 +65,7 @@ export default function MenuScreen() {
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <ThemedView style={styles.hero}>
-            <ThemedText type="title" style={styles.title}>
+            <ThemedText type="title" style={styles.title} accessibilityRole="header">
               Memorios
             </ThemedText>
             <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>
