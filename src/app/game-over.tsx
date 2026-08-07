@@ -62,7 +62,9 @@ export default function GameOverScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedView style={styles.summary}>
-          <ThemedText type="title">Fin de la partida</ThemedText>
+          <ThemedText type="title" accessibilityRole="header">
+            Fin de la partida
+          </ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.sequence}>
             {MODE_LABELS[mode]}
           </ThemedText>
