@@ -1,5 +1,5 @@
-import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -44,15 +44,22 @@ export default function MenuScreen() {
     });
   }
 
-  useEffect(() => {
-    let cancelled = false;
-    loadAllHighScores().then((scores) => {
-      if (!cancelled) setHighScores(scores);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // useFocusEffect, no useEffect con dependencias vacías: al volver aquí con el botón Atrás de
+  // la cabecera (router.back()), esta pantalla no se desmonta — es la misma instancia que ya
+  // estaba montada desde antes de entrar a jugar, así que un efecto de "solo al montar" nunca
+  // volvería a disparar y se quedaría con la puntuación de antes de esa partida. El foco sí
+  // cambia cada vez, tanto si se vuelve con Atrás como con cualquier otra navegación.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      loadAllHighScores().then((scores) => {
+        if (!cancelled) setHighScores(scores);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
 
   function highScoreText(mode: GameMode): string {
     if (highScores === null) return '';
