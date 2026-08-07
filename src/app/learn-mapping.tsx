@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, StyleSheet } from 'react-native';
+import { AccessibilityRole, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -15,6 +15,12 @@ import { Spacing } from '@/constants/theme';
 import { Direction } from '@/game/types';
 import { triggerDirectionHaptic, triggerReverseHaptic } from '@/lib/haptics';
 import { playTone } from '@/lib/sounds';
+
+// Mismo trait y misma razón que en FlickSurface (ver ese archivo para el porqué completo): con
+// accessibilityRole="button" normal, VoiceOver hace su ciclo de foco+anuncio en cada toque, y esa
+// voz —con la atenuación de audio que arrastra— tapaba el tono que esta pantalla existe para
+// dejar oír con claridad. Con el trait, el toque llega en crudo y VoiceOver no interpone nada.
+const ALLOWS_DIRECT_INTERACTION_ROLE = 'allowsDirectInteraction' as AccessibilityRole;
 
 export default function LearnMappingScreen() {
   function handlePress(direction: Direction) {
@@ -42,7 +48,8 @@ export default function LearnMappingScreen() {
               <Pressable
                 key={direction}
                 onPress={() => handlePress(direction)}
-                accessibilityRole="button"
+                accessible
+                accessibilityRole={ALLOWS_DIRECT_INTERACTION_ROLE}
                 accessibilityLabel={`${DIRECTION_SPOKEN_NAME[direction]}: ${DIRECTION_COLOR_NAMES[direction]}`}
                 accessibilityHint="Toca para escuchar el sonido y sentir la vibración de esta dirección"
                 style={({ pressed }) => [
@@ -83,7 +90,8 @@ export default function LearnMappingScreen() {
 
           <Pressable
             onPress={handleReversePress}
-            accessibilityRole="button"
+            accessible
+            accessibilityRole={ALLOWS_DIRECT_INTERACTION_ROLE}
             accessibilityLabel="Aviso de ronda invertida"
             accessibilityHint="Toca para escuchar el sonido y sentir la vibración de este aviso"
             style={({ pressed }) => [styles.row, styles.reverseRow, pressed && styles.rowPressed]}

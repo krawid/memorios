@@ -11,7 +11,7 @@ const LAST_SEEN_UPDATE_ID_KEY = 'memorios.lastSeenUpdateId';
 // el texto de novedades. Actualizarlo en cada actualización por aire que merezca aviso, antes
 // de publicarla.
 const NOVEDADES_VERSION_ACTUAL =
-  'Corregido: si volvías al menú con el botón Atrás tras jugar, a veces se veía la puntuación anterior en vez de la nueva.';
+  'En "Aprender el mapeo", tocar una fila ahora solo suena el tono, sin que VoiceOver anuncie nada encima.';
 
 async function comprobarNovedadesTrasArrancar() {
   const idActual = Updates.updateId;
