@@ -4,22 +4,14 @@ import { AccessibilityInfo, Alert, AppState } from 'react-native';
 import * as Updates from 'expo-updates';
 
 import { debeAvisarNovedades } from './update-novelties';
-import { wait } from './wait';
 
 const LAST_SEEN_UPDATE_ID_KEY = 'memorios.lastSeenUpdateId';
-
-// `reloadAsync()` es poco fiable si se llama justo al arrancar la app, antes de que el propio
-// módulo de expo-updates termine de inicializarse (confirmado: fallos conocidos en su
-// repositorio). Comprobado en dispositivo real con Memorios — la actualización se descargaba
-// bien, pero no se aplicaba en caliente hasta cerrar y reabrir del todo, sin ningún error
-// visible. Este margen deja que arranque de verdad antes de tocar nada de Updates.
-const ARRANQUE_DELAY_MS = 2000;
 
 // El --message de `eas update` no llega al dispositivo: este es el único sitio real donde vive
 // el texto de novedades. Actualizarlo en cada actualización por aire que merezca aviso, antes
 // de publicarla.
 const NOVEDADES_VERSION_ACTUAL =
-  'Corregido: a veces, tras instalar una actualización, hacía falta cerrar y volver a abrir la app para verla aplicada del todo.';
+  'Corregido: si volvías al menú con el botón Atrás tras jugar, a veces se veía la puntuación anterior en vez de la nueva.';
 
 async function comprobarNovedadesTrasArrancar() {
   const idActual = Updates.updateId;
@@ -78,7 +70,7 @@ export function useAppUpdates() {
   const comprobando = useRef(false);
 
   useEffect(() => {
-    let cancelado = false;
+    comprobarNovedadesTrasArrancar();
 
     function comprobarConDeduplicado() {
       if (comprobando.current) return;
@@ -88,20 +80,11 @@ export function useAppUpdates() {
       });
     }
 
-    wait(ARRANQUE_DELAY_MS).then(() => {
-      if (cancelado) return;
-      comprobarNovedadesTrasArrancar();
-      comprobarConDeduplicado();
-    });
+    comprobarConDeduplicado();
 
     const subscription = AppState.addEventListener('change', (state) => {
-      // Solo al volver a primer plano, nunca en el primer disparo (ya cubierto arriba con el
-      // margen de arranque): AppState puede emitir un "active" inicial junto con el montaje.
       if (state === 'active') comprobarConDeduplicado();
     });
-    return () => {
-      cancelado = true;
-      subscription.remove();
-    };
+    return () => subscription.remove();
   }, []);
 }
