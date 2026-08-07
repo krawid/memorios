@@ -11,7 +11,7 @@ const LAST_SEEN_UPDATE_ID_KEY = 'memorios.lastSeenUpdateId';
 // el texto de novedades. Actualizarlo en cada actualización por aire que merezca aviso, antes
 // de publicarla.
 const NOVEDADES_VERSION_ACTUAL =
-  'Los títulos de la pantalla principal y de fin de partida ahora se anuncian como encabezado con VoiceOver.';
+  'Corregido: si volvías al menú con el botón Atrás tras jugar, a veces se veía la puntuación anterior en vez de la nueva.';
 
 async function comprobarNovedadesTrasArrancar() {
   const idActual = Updates.updateId;
