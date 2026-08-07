@@ -4,10 +4,13 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useColorScheme } from 'react-native';
 
+import { useAppUpdates } from '@/lib/app-updates';
 import { preloadTones } from '@/lib/sounds';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+
+  useAppUpdates();
 
   useEffect(() => {
     // El juego se juega de oído: si el iPhone tiene puesto el interruptor de silencio, sin

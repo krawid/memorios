@@ -3,6 +3,10 @@
     "name": "Memorios",
     "slug": "memorios",
     "version": "1.0.0",
+    "runtimeVersion": "1.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/8bb7a3d5-98a5-4678-8ce2-3c7f07a1aae1"
+    },
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "memorios",
@@ -13,7 +17,9 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleDevelopmentRegion": "es",
-        "CFBundleLocalizations": ["es"],
+        "CFBundleLocalizations": [
+          "es"
+        ],
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true
         }
@@ -48,7 +54,8 @@
           "imageWidth": 76
         }
       ],
-      "expo-audio"
+      "expo-audio",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,
