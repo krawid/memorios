@@ -1,0 +1,21 @@
+{
+  "name": "memorios-servidor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "API de clasificaciones de Memorios. Sin dependencias: node:http y node:sqlite.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "iniciar": "node src/index.ts",
+    "start": "node src/index.ts",
+    "comprobar-tipos": "tsc --noEmit",
+    "test": "node --test src/*.prueba.ts",
+    "verificar": "npm run comprobar-tipos && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "~5.9.0"
+  }
+}

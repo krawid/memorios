@@ -1,0 +1,4 @@
+node_modules/
+
+# Base de datos local de desarrollo. En Railway vive en un volumen, nunca en el repositorio.
+datos/

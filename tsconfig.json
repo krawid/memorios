@@ -17,5 +17,12 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    // El servidor es un proyecto de Node aparte, con su propio tsconfig (tipos de Node,
+    // imports con extensión .ts). Comprobarlo con la configuración de la app da errores que no
+    // son reales: se verifica con `npm run verificar` dentro de servidor/.
+    "servidor"
   ]
 }
