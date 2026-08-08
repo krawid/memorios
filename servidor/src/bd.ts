@@ -2,7 +2,15 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-import { asignarPuestos, type FilaClasificacion, type Modo, type PuestoClasificacion, type PuntuacionEntrante } from './validacion.ts';
+import {
+  asignarPuestos,
+  compararMarcas,
+  type FilaClasificacion,
+  type Marcas,
+  type Modo,
+  type PuestoClasificacion,
+  type PuntuacionEntrante,
+} from './validacion.ts';
 
 /**
  * SQLite incorporado en Node (node:sqlite), sin dependencias que compilar.
@@ -26,81 +34,160 @@ export function abrirBaseDeDatos(ruta: string): DatabaseSync {
       jugador_id  TEXT    NOT NULL,
       apodo       TEXT    NOT NULL,
       modo        TEXT    NOT NULL,
-      rondas      INTEGER NOT NULL,
+      mejor1      INTEGER NOT NULL,
+      mejor2      INTEGER NOT NULL,
+      mejor3      INTEGER NOT NULL,
+      -- Cuándo se logró mejor1. Es el último criterio de desempate, el que garantiza que dos
+      -- jugadores nunca compartan puesto: dos marcas de tiempo no coinciden.
+      logrado     TEXT    NOT NULL,
       actualizado TEXT    NOT NULL,
       PRIMARY KEY (jugador_id, modo)
     )
   `);
 
-  // Una consulta de clasificación filtra por modo y ordena por rondas: este índice la resuelve
-  // sin recorrer la tabla entera.
-  bd.exec('CREATE INDEX IF NOT EXISTS idx_modo_rondas ON puntuaciones (modo, rondas DESC)');
+  // El orden de la clasificación es exactamente el de este índice, así que lo resuelve sin
+  // recorrer la tabla entera ni ordenar en memoria.
+  bd.exec(`
+    CREATE INDEX IF NOT EXISTS idx_clasificacion
+    ON puntuaciones (modo, mejor1 DESC, mejor2 DESC, mejor3 DESC, logrado ASC)
+  `);
 
   return bd;
 }
 
+interface FilaGuardada {
+  mejor1: number;
+  mejor2: number;
+  mejor3: number;
+  logrado: string;
+}
+
 /**
- * Guarda la puntuación quedándose SIEMPRE con la más alta. Es idempotente a propósito: la app
- * reenvía sus mejores marcas cada vez que abre la clasificación (por si alguna se quedó sin
- * subir), así que recibir una puntuación repetida o más baja tiene que ser inofensivo.
+ * Guarda las marcas del jugador quedándose con el MEJOR conjunto: se comparan la primera, la
+ * segunda y la tercera en ese orden (ver compararMarcas).
  *
- * Devuelve la puntuación que queda guardada tras la operación.
+ * Es idempotente a propósito: la app reenvía sus mejores marcas cada vez que abre la
+ * clasificación, por si alguna se quedó sin subir, así que recibir un conjunto repetido o peor
+ * tiene que ser inofensivo.
+ *
+ * `logrado` solo se actualiza cuando MEJORA la primera marca, porque representa "cuándo llegaste
+ * a tu tope actual". Si solo mejoras la segunda, tu antigüedad en el tope no cambia y no debe
+ * perder posiciones frente a quien lleva ahí más tiempo.
  */
 export function guardarPuntuacion(
   bd: DatabaseSync,
   puntuacion: PuntuacionEntrante,
   ahora: () => Date = () => new Date(),
-): number {
-  const { jugadorId, apodo, modo, rondas } = puntuacion;
+): Marcas {
+  const { jugadorId, apodo, modo, marcas } = puntuacion;
+  const momento = ahora().toISOString();
+
+  const guardada = bd
+    .prepare('SELECT mejor1, mejor2, mejor3, logrado FROM puntuaciones WHERE jugador_id = ? AND modo = ?')
+    .get(jugadorId, modo) as FilaGuardada | undefined;
+
+  if (!guardada) {
+    bd.prepare(
+      `INSERT INTO puntuaciones (jugador_id, apodo, modo, mejor1, mejor2, mejor3, logrado, actualizado)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(jugadorId, apodo, modo, marcas[0], marcas[1], marcas[2], momento, momento);
+    return marcas;
+  }
+
+  const previas: Marcas = [guardada.mejor1, guardada.mejor2, guardada.mejor3];
+
+  if (compararMarcas(marcas, previas) <= 0) {
+    // No mejora nada, pero el apodo puede haber cambiado: que se vea el nuevo igualmente.
+    bd.prepare('UPDATE puntuaciones SET apodo = ?, actualizado = ? WHERE jugador_id = ? AND modo = ?').run(
+      apodo,
+      momento,
+      jugadorId,
+      modo,
+    );
+    return previas;
+  }
+
+  const logrado = marcas[0] > previas[0] ? momento : guardada.logrado;
 
   bd.prepare(
-    `INSERT INTO puntuaciones (jugador_id, apodo, modo, rondas, actualizado)
-     VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(jugador_id, modo) DO UPDATE SET
-       rondas      = MAX(rondas, excluded.rondas),
-       -- El apodo se actualiza siempre: si alguien se lo cambia, que se vea el nuevo aunque
-       -- no haya batido su marca.
-       apodo       = excluded.apodo,
-       actualizado = CASE WHEN excluded.rondas > rondas THEN excluded.actualizado ELSE actualizado END`,
-  ).run(jugadorId, apodo, modo, rondas, ahora().toISOString());
+    `UPDATE puntuaciones
+     SET apodo = ?, mejor1 = ?, mejor2 = ?, mejor3 = ?, logrado = ?, actualizado = ?
+     WHERE jugador_id = ? AND modo = ?`,
+  ).run(apodo, marcas[0], marcas[1], marcas[2], logrado, momento, jugadorId, modo);
 
-  const fila = bd
-    .prepare('SELECT rondas FROM puntuaciones WHERE jugador_id = ? AND modo = ?')
-    .get(jugadorId, modo) as { rondas: number } | undefined;
+  return marcas;
+}
 
-  return fila?.rondas ?? rondas;
+interface FilaConsulta {
+  jugadorId: string;
+  apodo: string;
+  mejor1: number;
+  mejor2: number;
+  mejor3: number;
+}
+
+function aFila(fila: FilaConsulta): FilaClasificacion {
+  return {
+    jugadorId: fila.jugadorId,
+    apodo: fila.apodo,
+    rondas: fila.mejor1,
+    marcas: [fila.mejor1, fila.mejor2, fila.mejor3],
+  };
 }
 
 export function leerClasificacion(bd: DatabaseSync, modo: Modo, limite: number): PuestoClasificacion[] {
   const filas = bd
     .prepare(
-      `SELECT jugador_id AS jugadorId, apodo, rondas
+      `SELECT jugador_id AS jugadorId, apodo, mejor1, mejor2, mejor3
        FROM puntuaciones
        WHERE modo = ?
-       ORDER BY rondas DESC, actualizado ASC
+       ORDER BY mejor1 DESC, mejor2 DESC, mejor3 DESC, logrado ASC
        LIMIT ?`,
     )
-    .all(modo, limite) as unknown as FilaClasificacion[];
+    .all(modo, limite) as unknown as FilaConsulta[];
 
-  return asignarPuestos(filas);
+  return asignarPuestos(filas.map(aFila));
 }
 
 /**
  * Puesto de un jugador concreto aunque quede fuera de los primeros. Sirve para poder decirle
- * "vas 23.º" a quien no sale en la lista, en vez de dejarlo sin ninguna referencia.
+ * "vas 55.º" a quien no sale en la lista, en vez de dejarlo sin ninguna referencia.
  * Devuelve null si ese jugador no tiene puntuación en ese modo.
  */
 export function leerPuestoDe(bd: DatabaseSync, modo: Modo, jugadorId: string): PuestoClasificacion | null {
   const propia = bd
-    .prepare('SELECT jugador_id AS jugadorId, apodo, rondas FROM puntuaciones WHERE jugador_id = ? AND modo = ?')
-    .get(jugadorId, modo) as unknown as FilaClasificacion | undefined;
+    .prepare(
+      `SELECT jugador_id AS jugadorId, apodo, mejor1, mejor2, mejor3, logrado
+       FROM puntuaciones WHERE jugador_id = ? AND modo = ?`,
+    )
+    .get(jugadorId, modo) as (FilaConsulta & { logrado: string }) | undefined;
 
   if (!propia) return null;
 
-  // Empates compartidos: el puesto es cuánta gente tiene ESTRICTAMENTE más rondas, +1.
-  const { mejores } = bd
-    .prepare('SELECT COUNT(*) AS mejores FROM puntuaciones WHERE modo = ? AND rondas > ?')
-    .get(modo, propia.rondas) as { mejores: number };
+  // Cuánta gente va por delante con el mismo criterio de orden que la clasificación. El puesto
+  // es esa cuenta + 1, y como el criterio no admite empates, sale un número exacto.
+  const { delante } = bd
+    .prepare(
+      `SELECT COUNT(*) AS delante FROM puntuaciones
+       WHERE modo = ?
+         AND ( mejor1 > ?
+            OR (mejor1 = ? AND mejor2 > ?)
+            OR (mejor1 = ? AND mejor2 = ? AND mejor3 > ?)
+            OR (mejor1 = ? AND mejor2 = ? AND mejor3 = ? AND logrado < ?) )`,
+    )
+    .get(
+      modo,
+      propia.mejor1,
+      propia.mejor1,
+      propia.mejor2,
+      propia.mejor1,
+      propia.mejor2,
+      propia.mejor3,
+      propia.mejor1,
+      propia.mejor2,
+      propia.mejor3,
+      propia.logrado,
+    ) as { delante: number };
 
-  return { ...propia, puesto: mejores + 1 };
+  return { ...aFila(propia), puesto: delante + 1 };
 }

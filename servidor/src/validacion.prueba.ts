@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { asignarPuestos, normalizarApodo, validarPuntuacion } from './validacion.ts';
+import {
+  asignarPuestos,
+  compararMarcas,
+  normalizarApodo,
+  ordenarMarcas,
+  validarPuntuacion,
+  type Marcas,
+} from './validacion.ts';
 
-// Los caracteres de control se escriben SIEMPRE con escape (, \n), nunca literales: como
+// Los caracteres de control se construyen con fromCharCode, nunca se escriben literales: como
 // bytes de verdad son invisibles en el editor, y cualquier herramienta que toque el archivo los
 // puede borrar dejando un test que aprueba sin comprobar nada.
 const NULO = String.fromCharCode(0);
@@ -33,31 +40,73 @@ test('normalizarApodo acepta apodos normales, con tildes y eñes', () => {
   assert.equal(normalizarApodo('Begoña'), 'Begoña');
 });
 
-test('validarPuntuacion acepta una puntuación correcta', () => {
-  const r = validarPuntuacion({ jugadorId: 'abcd1234', apodo: 'Agus', modo: 'tranqui', rondas: 14 });
+test('ordenarMarcas ordena de mayor a menor y rellena con ceros', () => {
+  assert.deepEqual(ordenarMarcas([9, 12, 10]), [12, 10, 9]);
+  assert.deepEqual(ordenarMarcas([12]), [12, 0, 0]);
+  assert.deepEqual(ordenarMarcas([12, 10]), [12, 10, 0]);
+});
+
+test('ordenarMarcas rechaza listas vacías, largas o con valores no válidos', () => {
+  assert.equal(ordenarMarcas([]), null);
+  assert.equal(ordenarMarcas([1, 2, 3, 4]), null);
+  assert.equal(ordenarMarcas([1, -2]), null);
+  assert.equal(ordenarMarcas([1, 9999]), null);
+  assert.equal(ordenarMarcas([1, 2.5]), null);
+  assert.equal(ordenarMarcas(['12']), null);
+  assert.equal(ordenarMarcas('12'), null);
+});
+
+test('compararMarcas desempata por la segunda marca', () => {
+  const agus: Marcas = [12, 10, 9];
+  const moises: Marcas = [12, 9, 9];
+  assert.ok(compararMarcas(agus, moises) > 0);
+  assert.ok(compararMarcas(moises, agus) < 0);
+});
+
+test('compararMarcas desempata por la tercera cuando la segunda también empata', () => {
+  assert.ok(compararMarcas([12, 10, 9], [12, 10, 4]) > 0);
+});
+
+test('compararMarcas: quien solo ha jugado una vez queda por debajo con la misma mejor marca', () => {
+  // El caso que motivó todo esto: mismo tope, pero uno lo ha repetido y el otro no.
+  assert.ok(compararMarcas([12, 10, 9], [12, 0, 0]) > 0);
+});
+
+test('compararMarcas devuelve 0 solo si las tres coinciden (ahí decide la fecha)', () => {
+  assert.equal(compararMarcas([12, 10, 9], [12, 10, 9]), 0);
+});
+
+test('validarPuntuacion acepta una puntuación correcta y ordena las marcas', () => {
+  const r = validarPuntuacion({ jugadorId: 'abcd1234', apodo: 'Agus', modo: 'tranqui', marcas: [10, 14, 3] });
   assert.equal(r.ok, true);
-  assert.deepEqual(r.ok && r.valor, { jugadorId: 'abcd1234', apodo: 'Agus', modo: 'tranqui', rondas: 14 });
+  assert.deepEqual(r.ok && r.valor.marcas, [14, 10, 3]);
 });
 
-test('validarPuntuacion rechaza modos inventados', () => {
-  const r = validarPuntuacion({ jugadorId: 'abcd1234', apodo: 'Agus', modo: 'imposible', rondas: 3 });
-  assert.equal(r.ok, false);
-});
-
-test('validarPuntuacion rechaza rondas absurdas, negativas o decimales', () => {
-  const base = { jugadorId: 'abcd1234', apodo: 'Agus', modo: 'tranqui' };
-  assert.equal(validarPuntuacion({ ...base, rondas: 9999 }).ok, false);
-  assert.equal(validarPuntuacion({ ...base, rondas: -1 }).ok, false);
-  assert.equal(validarPuntuacion({ ...base, rondas: 3.5 }).ok, false);
-  assert.equal(validarPuntuacion({ ...base, rondas: '5' }).ok, false);
+test('validarPuntuacion acepta una sola marca', () => {
+  const r = validarPuntuacion({ jugadorId: 'abcd1234', apodo: 'Agus', modo: 'tranqui', marcas: [14] });
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.ok && r.valor.marcas, [14, 0, 0]);
 });
 
 test('validarPuntuacion acepta 0 rondas (perder en la primera es un resultado válido)', () => {
-  assert.equal(validarPuntuacion({ jugadorId: 'abcd1234', apodo: 'Agus', modo: 'tranqui', rondas: 0 }).ok, true);
+  assert.equal(validarPuntuacion({ jugadorId: 'abcd1234', apodo: 'Agus', modo: 'tranqui', marcas: [0] }).ok, true);
+});
+
+test('validarPuntuacion rechaza modos inventados', () => {
+  const r = validarPuntuacion({ jugadorId: 'abcd1234', apodo: 'Agus', modo: 'imposible', marcas: [3] });
+  assert.equal(r.ok, false);
+});
+
+test('validarPuntuacion rechaza marcas absurdas, negativas o decimales', () => {
+  const base = { jugadorId: 'abcd1234', apodo: 'Agus', modo: 'tranqui' };
+  assert.equal(validarPuntuacion({ ...base, marcas: [9999] }).ok, false);
+  assert.equal(validarPuntuacion({ ...base, marcas: [-1] }).ok, false);
+  assert.equal(validarPuntuacion({ ...base, marcas: [3.5] }).ok, false);
+  assert.equal(validarPuntuacion({ ...base, marcas: 5 }).ok, false);
 });
 
 test('validarPuntuacion rechaza identificadores raros o cortos', () => {
-  const base = { apodo: 'Agus', modo: 'tranqui', rondas: 3 };
+  const base = { apodo: 'Agus', modo: 'tranqui', marcas: [3] };
   assert.equal(validarPuntuacion({ ...base, jugadorId: 'corto' }).ok, false);
   assert.equal(validarPuntuacion({ ...base, jugadorId: 'con espacios!' }).ok, false);
 });
@@ -67,18 +116,16 @@ test('validarPuntuacion rechaza lo que no sea un objeto', () => {
   assert.equal(validarPuntuacion('hola').ok, false);
 });
 
-test('asignarPuestos comparte el puesto en los empates', () => {
+test('asignarPuestos numera sin empates', () => {
   const puestos = asignarPuestos([
-    { jugadorId: 'a', apodo: 'A', rondas: 20 },
-    { jugadorId: 'b', apodo: 'B', rondas: 14 },
-    { jugadorId: 'c', apodo: 'C', rondas: 14 },
-    { jugadorId: 'd', apodo: 'D', rondas: 9 },
+    { jugadorId: 'a', apodo: 'A', rondas: 12, marcas: [12, 10, 9] },
+    { jugadorId: 'b', apodo: 'B', rondas: 12, marcas: [12, 9, 9] },
+    { jugadorId: 'c', apodo: 'C', rondas: 12, marcas: [12, 0, 0] },
   ]);
 
-  // Dos empatados a 14 comparten el 2.º puesto, y el siguiente es 4.º (no 3.º).
   assert.deepEqual(
     puestos.map((p) => p.puesto),
-    [1, 2, 2, 4],
+    [1, 2, 3],
   );
 });
 

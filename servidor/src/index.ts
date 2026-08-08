@@ -86,7 +86,9 @@ const servidor = createServer(async (req, res) => {
       }
 
       const guardadas = guardarPuntuacion(bd, validacion.valor);
-      responder(res, 200, { ok: true, rondas: guardadas });
+      // Se devuelve lo que queda guardado, que puede no ser lo que se acaba de mandar: si la
+      // app reenvía algo peor, el servidor conserva lo bueno y así la app puede enterarse.
+      responder(res, 200, { ok: true, rondas: guardadas[0], marcas: guardadas });
       return;
     }
 

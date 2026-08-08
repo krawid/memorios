@@ -9,20 +9,47 @@ API mínima para las clasificaciones por modo. **Sin una sola dependencia de eje
 | Método | Ruta | Qué hace |
 |---|---|---|
 | `GET` | `/salud` | Comprobación de vida. Devuelve `{ ok: true }` |
-| `POST` | `/puntuaciones` | Publica una puntuación. Cuerpo: `{ jugadorId, apodo, modo, rondas }` |
+| `POST` | `/puntuaciones` | Publica las marcas. Cuerpo: `{ jugadorId, apodo, modo, marcas }` |
 | `GET` | `/clasificacion/:modo` | Los 50 primeros de ese modo. Admite `?jugadorId=` (ver abajo) |
 
 Modos válidos: `tranqui`, `chunguillo`, `nidecona`.
 
-**`POST /puntuaciones` es idempotente y se queda siempre con la marca más alta.** La app reenvía
-sus mejores puntuaciones cada vez que abre la clasificación, por si alguna se quedó sin subir
-(sin cobertura, servidor caído). Recibir una repetida o más baja no estropea nada.
+`marcas` es una lista de **1 a 3** enteros: las mejores partidas de ese jugador en ese modo. Se
+ordenan y se rellenan con ceros en el servidor, así que da igual en qué orden lleguen.
+
+**`POST /puntuaciones` es idempotente y se queda siempre con el mejor conjunto.** La app reenvía
+sus mejores marcas cada vez que abre la clasificación, por si alguna se quedó sin subir (sin
+cobertura, servidor caído). Recibir algo repetido o peor no estropea nada.
 
 **`?jugadorId=` en la clasificación**: si ese jugador no sale entre los 50 primeros, la respuesta
 incluye su puesto aparte en `propio`, para poder decirle "vas 55.º" en vez de dejarlo sin
 ninguna referencia. Si ya sale en la lista, `propio` viene a `null`.
 
-Los empates comparten puesto (1, 2, 2, 4), que es lo que la gente espera de una clasificación.
+## Cómo se ordena: sin empates
+
+Los empates se deshacen en cascada, y por eso **dos jugadores nunca comparten puesto**:
+
+1. **Mejor marca.**
+2. Si empatan, **la segunda mejor** — premia la constancia frente a la partida con suerte.
+3. Si vuelven a empatar, **la tercera**.
+4. Y si las tres coinciden, **quién llegó antes a su mejor marca**. Dos marcas de tiempo no
+   coinciden, así que aquí se acaba siempre.
+
+Ejemplo con tres jugadores a 12 rondas:
+
+| Jugador | Marcas | Puesto |
+|---|---|---|
+| Agus | 12, 10, 9 | 1.º |
+| Moisés | 12, 9, 9 | 2.º |
+| Jose | 12, —, — | 3.º |
+
+Quien solo ha jugado una vez queda por debajo con la misma mejor marca: sus huecos vacíos
+cuentan como ceros. Es la consecuencia buscada de premiar la constancia, no un efecto
+secundario.
+
+⚠️ Detalle que importa: la fecha (`logrado`) **solo se renueva cuando mejora la primera marca**.
+Si mejoras únicamente la segunda, tu antigüedad en el tope no cambia y no pierdes posiciones
+frente a quien lleva ahí más tiempo.
 
 ## Desarrollo
 
