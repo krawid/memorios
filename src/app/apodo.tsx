@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { AccessibilityInfo, Pressable, StyleSheet, TextInput } from 'react-native';
+import { AccessibilityInfo, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -57,6 +57,14 @@ export default function ApodoScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      {/* Sin esto, al abrirse el teclado para escribir el apodo, el botón Guardar —anclado
+          abajo— se queda DEBAJO del teclado y no hay forma de llegar a él sin cerrarlo antes.
+          Con KeyboardAvoidingView sube por encima. En Android el sistema ya redimensiona la
+          ventana solo, de ahí el 'height' en vez de 'padding'. */}
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
       <SafeAreaView style={styles.safeArea}>
         <ThemedView style={styles.contenido}>
           <ThemedText type="default" themeColor="textSecondary">
@@ -65,9 +73,21 @@ export default function ApodoScreen() {
           </ThemedText>
 
           <ThemedView style={styles.campo}>
-            {/* La etiqueta va en accessibilityLabel del propio campo, no solo como texto encima:
-                un texto suelto al lado no se lee como el nombre del campo al enfocarlo. */}
-            <ThemedText type="subtitle">Apodo</ThemedText>
+            {/* El texto "Apodo" y la ayuda de debajo son SOLO para quien ve la pantalla: se
+                ocultan al lector porque repiten lo que el propio campo ya anuncia como nombre y
+                como pista. Sin esto, VoiceOver hace tres paradas ("Apodo", el campo —que se
+                llama Apodo— y "Máximo 20 caracteres") para una sola cosa. Es el caso exacto que
+                documenta la guía compartida: etiqueta visible que se repite como nombre
+                accesible del campo que acompaña.
+                accessibilityElementsHidden es de iOS e importantForAccessibility de Android;
+                se ponen los dos porque cada plataforma entiende el suyo. */}
+            <ThemedText
+              type="subtitle"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              Apodo
+            </ThemedText>
             <TextInput
               value={texto}
               onChangeText={(valor) => {
@@ -80,10 +100,15 @@ export default function ApodoScreen() {
               returnKeyType="done"
               onSubmitEditing={guardar}
               accessibilityLabel="Apodo"
-              accessibilityHint={`Máximo ${MAX_APODO} caracteres`}
+              accessibilityHint={`Máximo ${MAX_APODO} caracteres. Al terminar, usa el botón Guardar apodo.`}
               style={styles.entrada}
             />
-            <ThemedText themeColor="textSecondary" style={styles.ayuda}>
+            <ThemedText
+              themeColor="textSecondary"
+              style={styles.ayuda}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
               Máximo {MAX_APODO} caracteres.
             </ThemedText>
           </ThemedView>
@@ -108,6 +133,7 @@ export default function ApodoScreen() {
           </ThemedText>
         </Pressable>
       </SafeAreaView>
+      </KeyboardAvoidingView>
     </ThemedView>
   );
 }
