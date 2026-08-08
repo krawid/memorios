@@ -11,7 +11,7 @@ const LAST_SEEN_UPDATE_ID_KEY = 'memorios.lastSeenUpdateId';
 // el texto de novedades. Actualizarlo en cada actualización por aire que merezca aviso, antes
 // de publicarla.
 const NOVEDADES_VERSION_ACTUAL =
-  'En "Aprender el mapeo", tocar una fila ahora solo suena el tono, sin que VoiceOver anuncie nada encima.';
+  'Nueva clasificación por modos: ponle un apodo a tu perfil desde el menú y compara tus marcas con las de los demás. A igual mejor marca, va por delante quien tenga mejor segunda.';
 
 async function comprobarNovedadesTrasArrancar() {
   const idActual = Updates.updateId;
