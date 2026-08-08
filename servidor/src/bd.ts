@@ -150,6 +150,22 @@ export function leerClasificacion(bd: DatabaseSync, modo: Modo, limite: number):
 }
 
 /**
+ * La tabla entera, tal cual, para copias de seguridad. **Incluye el jugador_id a propósito**:
+ * una copia que no permita restaurar quién era cada quién no sirve de nada. Justo por eso la
+ * ruta que la expone va protegida con clave (ver index.ts) — es lo contrario de la
+ * clasificación pública, que nunca debe llevar identificadores.
+ */
+export function exportarTodo(bd: DatabaseSync): unknown[] {
+  return bd
+    .prepare(
+      `SELECT jugador_id, apodo, modo, mejor1, mejor2, mejor3, logrado, actualizado
+       FROM puntuaciones
+       ORDER BY modo, mejor1 DESC`,
+    )
+    .all() as unknown[];
+}
+
+/**
  * Puesto de un jugador concreto aunque quede fuera de los primeros. Sirve para poder decirle
  * "vas 55.º" a quien no sale en la lista, en vez de dejarlo sin ninguna referencia.
  * Devuelve null si ese jugador no tiene puntuación en ese modo.

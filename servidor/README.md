@@ -11,6 +11,7 @@ API mínima para las clasificaciones por modo. **Sin una sola dependencia de eje
 | `GET` | `/salud` | Comprobación de vida. Devuelve `{ ok: true }` |
 | `POST` | `/puntuaciones` | Publica las marcas. Cuerpo: `{ jugadorId, apodo, modo, marcas }` |
 | `GET` | `/clasificacion/:modo` | Los 50 primeros de ese modo. Admite `?jugadorId=` (ver abajo) |
+| `GET` | `/exportar` | Copia de seguridad. Protegida con clave (ver abajo) |
 
 Modos válidos: `tranqui`, `chunguillo`, `nidecona`.
 
@@ -65,6 +66,33 @@ Variables de entorno:
 |---|---|---|
 | `PORT` | `3000` | Railway la fija sola |
 | `RUTA_BD` | `./datos/memorios.db` | Ruta del fichero SQLite |
+| `CLAVE_EXPORTACION` | *(vacía)* | Clave de `/exportar`. Sin ella, esa ruta **no existe** |
+
+## Copias de seguridad
+
+Railway **no hace copias del volumen en el plan Hobby** (son de plan Pro), así que si el volumen
+se pierde, se pierde la clasificación. De ahí esta ruta:
+
+```bash
+curl -H "Authorization: Bearer TU_CLAVE" https://TU-DOMINIO/exportar > memorios-$(date +%F).json
+```
+
+Devuelve la tabla entera, **incluidos los `jugador_id`** — una copia sin ellos no permitiría
+restaurar quién era quién. Por eso va protegida, al contrario que la clasificación pública, que
+nunca debe llevar identificadores.
+
+Detalles pensados a propósito:
+
+- **La clave va en cabecera, no en la URL.** Las URLs acaban en registros de servidores y en
+  historiales; las cabeceras no.
+- **Sin `CLAVE_EXPORTACION` configurada, la ruta devuelve 404.** Si algún día se despliega
+  olvidando la variable, la base de datos no queda expuesta por descuido: simplemente no hay
+  copias hasta que se ponga.
+- La clave vive **solo en el servidor**. Nunca en el repositorio (que es público) ni dentro de
+  la app (de donde se podría extraer). Esta sí es protección de verdad.
+
+Para restaurar, no hay ruta: se hace desde la consola del servicio en Railway con el JSON
+delante. Es una operación rara y destructiva, y no merece una puerta abierta permanente.
 
 ## Despliegue en Railway
 

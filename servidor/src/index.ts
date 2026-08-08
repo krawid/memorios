@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 
-import { abrirBaseDeDatos, guardarPuntuacion, leerClasificacion, leerPuestoDe } from './bd.ts';
+import { abrirBaseDeDatos, exportarTodo, guardarPuntuacion, leerClasificacion, leerPuestoDe } from './bd.ts';
+import { crearLimitador } from './limitador.ts';
 import { aPuestoPublico, esJugadorId, esModo, validarPuntuacion } from './validacion.ts';
 
 const PUERTO = Number(process.env.PORT ?? 3000);
@@ -10,21 +11,15 @@ const RUTA_BD = process.env.RUTA_BD ?? './datos/memorios.db';
 const LIMITE_CLASIFICACION = 50;
 const MAX_CUERPO_BYTES = 4 * 1024;
 
-// Límite por IP: no es seguridad de verdad (el repositorio es público y la dirección se ve),
-// solo evita que un bucle accidental o un curioso llenen la tabla. Ventana deslizante simple
-// en memoria; si el servicio se reinicia, se olvida, y no pasa nada.
-const PETICIONES_POR_MINUTO = 60;
-const contadores = new Map<string, { hasta: number; cuantas: number }>();
+/**
+ * Clave para la ruta de exportación, SOLO en una variable de entorno del servidor: nunca en el
+ * repositorio (que es público) ni dentro de la app (de donde se podría extraer). Esta sí es
+ * protección de verdad, a diferencia de una clave metida en el móvil.
+ * Si no está puesta, la ruta no existe — vale más quedarse sin copias que dejarla abierta.
+ */
+const CLAVE_EXPORTACION = process.env.CLAVE_EXPORTACION ?? '';
 
-function superaLimite(ip: string, ahora: number): boolean {
-  const actual = contadores.get(ip);
-  if (!actual || ahora > actual.hasta) {
-    contadores.set(ip, { hasta: ahora + 60_000, cuantas: 1 });
-    return false;
-  }
-  actual.cuantas += 1;
-  return actual.cuantas > PETICIONES_POR_MINUTO;
-}
+const limitador = crearLimitador();
 
 const bd = abrirBaseDeDatos(RUTA_BD);
 
@@ -67,7 +62,7 @@ const servidor = createServer(async (req, res) => {
   }
 
   const ip = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? 'desconocida';
-  if (superaLimite(ip, Date.now())) {
+  if (limitador.supera(ip, Date.now())) {
     responder(res, 429, { error: 'Demasiadas peticiones, prueba en un minuto' });
     return;
   }
@@ -75,6 +70,25 @@ const servidor = createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && ruta === '/salud') {
       responder(res, 200, { ok: true });
+      return;
+    }
+
+    if (req.method === 'GET' && ruta === '/exportar') {
+      // Sin clave configurada, la ruta ni existe: así un despliegue donde se olvide la variable
+      // no deja la base de datos expuesta por descuido.
+      if (CLAVE_EXPORTACION === '') {
+        responder(res, 404, { error: 'Ruta no encontrada' });
+        return;
+      }
+
+      // La clave va en cabecera, no en la URL: las URLs acaban en registros y en historiales.
+      const cabecera = req.headers.authorization ?? '';
+      if (cabecera !== `Bearer ${CLAVE_EXPORTACION}`) {
+        responder(res, 401, { error: 'No autorizado' });
+        return;
+      }
+
+      responder(res, 200, { exportado: new Date().toISOString(), puntuaciones: exportarTodo(bd) });
       return;
     }
 
