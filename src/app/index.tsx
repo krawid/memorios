@@ -7,13 +7,14 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MODE_DESCRIPTIONS, MODE_LABELS } from '@/constants/mode-presentation';
 import { Spacing } from '@/constants/theme';
-import { loadAllHighScores } from '@/game/high-score-store';
+import { cargarTodasLasMarcas } from '@/game/high-score-store';
+import { mejorMarca, type Marcas } from '@/game/marcas';
 import { GAME_MODES, GameMode } from '@/game/modes';
 import { createRandomSeed } from '@/game/seeded-random';
 
 export default function MenuScreen() {
   const router = useRouter();
-  const [highScores, setHighScores] = useState<Record<GameMode, number> | null>(null);
+  const [highScores, setHighScores] = useState<Record<GameMode, Marcas> | null>(null);
   const [pasaloModalVisible, setPasaloModalVisible] = useState(false);
   const pendingPasaloMode = useRef<GameMode | null>(null);
 
@@ -52,8 +53,8 @@ export default function MenuScreen() {
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      loadAllHighScores().then((scores) => {
-        if (!cancelled) setHighScores(scores);
+      cargarTodasLasMarcas().then((marcas) => {
+        if (!cancelled) setHighScores(marcas);
       });
       return () => {
         cancelled = true;
@@ -63,7 +64,7 @@ export default function MenuScreen() {
 
   function highScoreText(mode: GameMode): string {
     if (highScores === null) return '';
-    const score = highScores[mode];
+    const score = mejorMarca(highScores[mode]);
     return score === 0 ? 'Sin puntuación todavía' : `Mejor: ${score} ${score === 1 ? 'ronda' : 'rondas'}`;
   }
 
@@ -95,6 +96,12 @@ export default function MenuScreen() {
               label="Modo pásalo"
               description="Dos jugadores, la misma secuencia, pasando el teléfono. Elige la dificultad al empezar."
               onPress={() => setPasaloModalVisible(true)}
+            />
+
+            <MenuButton
+              label="Clasificación"
+              description="Compara tus mejores marcas con las de los demás, modo a modo."
+              onPress={() => router.push('/clasificacion')}
             />
 
             <MenuButton

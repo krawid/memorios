@@ -10,12 +10,14 @@ import { ThemedView } from '@/components/themed-view';
 import { MODE_LABELS } from '@/constants/mode-presentation';
 import { Spacing } from '@/constants/theme';
 import { createInitialEngineState, expectedOrder, reduceEngine, scoreFromState } from '@/game/engine';
-import { saveHighScoreIfBetter } from '@/game/high-score-store';
+import { registrarPartida } from '@/game/high-score-store';
 import { GAME_MODES, GameMode, MODE_CONFIG, playbackTimingForRound } from '@/game/modes';
 import { evaluateInput } from '@/game/round-evaluator';
 import { createSeededRandom } from '@/game/seeded-random';
 import { Direction } from '@/game/types';
+import { publicarMarcas } from '@/lib/clasificacion-api';
 import { triggerDirectionHaptic, triggerFailHaptic, triggerReverseHaptic } from '@/lib/haptics';
+import { obtenerApodo, obtenerJugadorId } from '@/lib/identidad';
 import { playTone } from '@/lib/sounds';
 import { wait } from '@/lib/wait';
 
@@ -114,11 +116,21 @@ export default function GameScreen() {
     // En Pásalo no se guarda: es un duelo entre dos personas concretas, no una puntuación
     // personal comparable con las de en solitario — mezclarlas no significaría nada.
     if (isPasalo) return;
+
     // Se guarda de inmediato, no detrás de la pausa de la transición de abajo: esa pausa es
     // solo para que el cambio de pantalla no sea brusco, la puntuación no tiene por qué
     // esperarla. Cuanto menos tiempo pase entre terminar la partida y persistirla, menos
     // ventana hay para que algo (la app cerrándose, una recarga) la deje sin guardar.
-    saveHighScoreIfBetter(mode, score);
+    registrarPartida(mode, score).then(async (marcas) => {
+      // Publicar es lo último y lo menos importante: si no hay red o el servidor está caído,
+      // no pasa nada. La app reenvía sus mejores marcas cada vez que se abre la clasificación
+      // y el servidor se queda siempre con las mejores, así que esto se corrige solo.
+      const apodo = await obtenerApodo();
+      if (apodo === null) return; // sin apodo no se aparece en la clasificación
+
+      const jugadorId = await obtenerJugadorId();
+      publicarMarcas(jugadorId, apodo, mode, marcas);
+    });
   }, [phase, isPasalo, mode, score]);
 
   useEffect(() => {

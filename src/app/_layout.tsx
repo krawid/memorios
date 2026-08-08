@@ -34,6 +34,12 @@ export default function RootLayout() {
               nombre de la ruta y el botón Atrás decía literalmente "index". */}
           <Stack.Screen name="index" options={{ title: 'Memorios' }} />
           <Stack.Screen name="learn-mapping" options={{ headerShown: true, title: 'Aprender el mapeo' }} />
+          {/* Con cabecera a propósito: al entrar, VoiceOver tiene un sitio fiable donde posarse
+              y no hace falta fijar el foco a mano (ver use-accessibility-focus.ts, que existe
+              justo para las pantallas que NO la tienen). */}
+          <Stack.Screen name="clasificacion" options={{ headerShown: true, title: 'Clasificación' }} />
+          <Stack.Screen name="clasificacion-modo" options={{ headerShown: true, title: 'Clasificación' }} />
+          <Stack.Screen name="apodo" options={{ headerShown: true, title: 'Tu apodo' }} />
           {/* gestureEnabled: false — el deslizamiento hacia la derecha es el gesto nativo de
               "volver atrás" de iOS, y le robaba el flick a la derecha a la superficie de juego.
               Se desactiva solo el gesto; el botón Atrás de la cabecera sigue estando. */}
