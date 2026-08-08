@@ -154,3 +154,34 @@ export interface PuestoClasificacion extends FilaClasificacion {
 export function asignarPuestos(filas: readonly FilaClasificacion[]): PuestoClasificacion[] {
   return filas.map((fila, indice) => ({ ...fila, puesto: indice + 1 }));
 }
+
+/**
+ * Lo que sale por la red. **No lleva `jugadorId`, y es deliberado.**
+ *
+ * Al principio sí lo llevaba, y era un agujero comprobado: el identificador es la única cosa
+ * que autentica a un jugador, así que publicarlo en una clasificación abierta permitía a
+ * cualquiera coger el de otro y renombrarlo a lo que quisiera (la puntuación no, porque solo
+ * puede subir, pero el apodo sí). Quién es cada quien se resuelve con `eresTu`, que lo calcula
+ * el servidor comparando contra el `?jugadorId=` de quien pregunta: la app sabe cuál es su fila
+ * sin que nadie más pueda saber el identificador de nadie.
+ */
+export interface PuestoPublico {
+  puesto: number;
+  apodo: string;
+  rondas: number;
+  marcas: Marcas;
+  eresTu: boolean;
+}
+
+export function aPuestoPublico(
+  puesto: PuestoClasificacion,
+  quienPregunta: string | null,
+): PuestoPublico {
+  return {
+    puesto: puesto.puesto,
+    apodo: puesto.apodo,
+    rondas: puesto.rondas,
+    marcas: puesto.marcas,
+    eresTu: quienPregunta !== null && puesto.jugadorId === quienPregunta,
+  };
+}

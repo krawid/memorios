@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 
 import { abrirBaseDeDatos, guardarPuntuacion, leerClasificacion, leerPuestoDe } from './bd.ts';
-import { esJugadorId, esModo, validarPuntuacion } from './validacion.ts';
+import { aPuestoPublico, esJugadorId, esModo, validarPuntuacion } from './validacion.ts';
 
 const PUERTO = Number(process.env.PORT ?? 3000);
 // En Railway esto apunta al volumen montado (p. ej. /datos/memorios.db). En local, a una
@@ -101,15 +101,23 @@ const servidor = createServer(async (req, res) => {
 
       const puestos = leerClasificacion(bd, modo, LIMITE_CLASIFICACION);
 
+      const parametro = url.searchParams.get('jugadorId');
+      const quienPregunta = esJugadorId(parametro) ? parametro : null;
+
       // Si el jugador que pregunta no sale entre los primeros, se le devuelve aparte su puesto
       // para que la app pueda decirle dónde está en vez de dejarlo sin referencia.
-      const jugadorId = url.searchParams.get('jugadorId');
-      const propio =
-        esJugadorId(jugadorId) && !puestos.some((p) => p.jugadorId === jugadorId)
-          ? leerPuestoDe(bd, modo, jugadorId)
+      const propioInterno =
+        quienPregunta !== null && !puestos.some((p) => p.jugadorId === quienPregunta)
+          ? leerPuestoDe(bd, modo, quienPregunta)
           : null;
 
-      responder(res, 200, { modo, puestos, propio });
+      // aPuestoPublico quita el jugadorId: publicarlo permitía suplantar a otros jugadores
+      // (ver el comentario de esa función). Nunca devolver `puestos` en crudo.
+      responder(res, 200, {
+        modo,
+        puestos: puestos.map((p) => aPuestoPublico(p, quienPregunta)),
+        propio: propioInterno === null ? null : aPuestoPublico(propioInterno, quienPregunta),
+      });
       return;
     }
 

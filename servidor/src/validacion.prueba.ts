@@ -7,6 +7,7 @@ import {
   normalizarApodo,
   ordenarMarcas,
   validarPuntuacion,
+  aPuestoPublico,
   type Marcas,
 } from './validacion.ts';
 
@@ -131,4 +132,24 @@ test('asignarPuestos numera sin empates', () => {
 
 test('asignarPuestos con la lista vacía no revienta', () => {
   assert.deepEqual(asignarPuestos([]), []);
+});
+
+test('aPuestoPublico NUNCA expone el jugadorId', () => {
+  // Regresión de un agujero real: con el jugadorId en la clasificación pública, cualquiera
+  // podía coger el de otro y renombrarlo. Si alguien vuelve a meterlo, este test lo caza.
+  const publico = aPuestoPublico(
+    { jugadorId: 'secreto-de-agus', apodo: 'Agus', rondas: 12, marcas: [12, 10, 9], puesto: 1 },
+    null,
+  );
+
+  assert.equal('jugadorId' in publico, false);
+  assert.equal(JSON.stringify(publico).includes('secreto-de-agus'), false);
+});
+
+test('aPuestoPublico marca eresTu solo para quien pregunta', () => {
+  const fila = { jugadorId: 'soy-yo', apodo: 'Yo', rondas: 12, marcas: [12, 0, 0] as const, puesto: 1 };
+
+  assert.equal(aPuestoPublico(fila, 'soy-yo').eresTu, true);
+  assert.equal(aPuestoPublico(fila, 'es-otro').eresTu, false);
+  assert.equal(aPuestoPublico(fila, null).eresTu, false);
 });
