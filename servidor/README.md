@@ -77,9 +77,9 @@ se pierde, se pierde la clasificación. De ahí esta ruta:
 curl -H "Authorization: Bearer TU_CLAVE" https://TU-DOMINIO/exportar > memorios-$(date +%F).json
 ```
 
-Devuelve la tabla entera, **incluidos los `jugador_id`** — una copia sin ellos no permitiría
-restaurar quién era quién. Por eso va protegida, al contrario que la clasificación pública, que
-nunca debe llevar identificadores.
+Devuelve `{ exportado, jugadores, puntuaciones }` — las dos tablas enteras, **incluidos los
+`jugador_id`**, porque una copia sin ellos no permitiría restaurar quién era quién. Por eso va
+protegida, al contrario que la clasificación pública, que nunca debe llevar identificadores.
 
 Detalles pensados a propósito:
 

@@ -102,7 +102,11 @@ const servidor = createServer(async (req, res) => {
         return;
       }
 
-      responder(res, 200, { exportado: new Date().toISOString(), puntuaciones: exportarTodo(bd) });
+      // Se esparce el resultado, no se anida: `exportarTodo` devuelve { jugadores, puntuaciones }
+      // y meterlo bajo otra clave dejaba un JSON con "puntuaciones.puntuaciones" dentro. En un
+      // fichero de copia de seguridad, que la forma sea clara importa: es lo que habrá que leer
+      // dentro de meses, con prisa, para restaurar.
+      responder(res, 200, { exportado: new Date().toISOString(), ...exportarTodo(bd) });
       return;
     }
 
