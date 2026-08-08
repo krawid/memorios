@@ -129,7 +129,7 @@ export default function GameScreen() {
       if (apodo === null) return; // sin apodo no se aparece en la clasificación
 
       const jugadorId = await obtenerJugadorId();
-      publicarMarcas(jugadorId, apodo, mode, marcas);
+      publicarMarcas(jugadorId, mode, marcas);
     });
   }, [phase, isPasalo, mode, score]);
 

@@ -1,8 +1,22 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 
-import { abrirBaseDeDatos, exportarTodo, guardarPuntuacion, leerClasificacion, leerPuestoDe } from './bd.ts';
+import {
+  abrirBaseDeDatos,
+  exportarTodo,
+  guardarPuntuacion,
+  leerClasificacion,
+  leerPuestoDe,
+  reclamarApodo,
+  tieneApodo,
+} from './bd.ts';
 import { crearLimitador } from './limitador.ts';
-import { aPuestoPublico, esJugadorId, esModo, validarPuntuacion } from './validacion.ts';
+import {
+  aPuestoPublico,
+  esJugadorId,
+  esModo,
+  validarPuntuacion,
+  validarReclamoApodo,
+} from './validacion.ts';
 
 const PUERTO = Number(process.env.PORT ?? 3000);
 // En Railway esto apunta al volumen montado (p. ej. /datos/memorios.db). En local, a una
@@ -92,10 +106,38 @@ const servidor = createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === 'POST' && ruta === '/apodo') {
+      const validacion = validarReclamoApodo(await leerCuerpo(req));
+      if (!validacion.ok) {
+        responder(res, 400, { error: validacion.error });
+        return;
+      }
+
+      const { jugadorId, apodo } = validacion.valor;
+      const reclamo = reclamarApodo(bd, jugadorId, apodo);
+
+      if (!reclamo.ok) {
+        // 409 y no 400: la petición es correcta, lo que pasa es que choca con el estado actual.
+        // La app distingue los dos casos para decir cosas distintas.
+        responder(res, 409, { error: reclamo.error });
+        return;
+      }
+
+      responder(res, 200, { ok: true, apodo: reclamo.valor });
+      return;
+    }
+
     if (req.method === 'POST' && ruta === '/puntuaciones') {
       const validacion = validarPuntuacion(await leerCuerpo(req));
       if (!validacion.ok) {
         responder(res, 400, { error: validacion.error });
+        return;
+      }
+
+      // Sin apodo reservado no se guarda nada: si no, habría puntuaciones huérfanas que nunca
+      // podrían salir en la clasificación (que cruza con la tabla de jugadores).
+      if (!tieneApodo(bd, validacion.valor.jugadorId)) {
+        responder(res, 409, { error: 'Antes hay que elegir un apodo' });
         return;
       }
 

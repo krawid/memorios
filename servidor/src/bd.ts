@@ -5,11 +5,13 @@ import { DatabaseSync } from 'node:sqlite';
 import {
   asignarPuestos,
   compararMarcas,
+  normalizarParaComparar,
   type FilaClasificacion,
   type Marcas,
   type Modo,
   type PuestoClasificacion,
   type PuntuacionEntrante,
+  type Resultado,
 } from './validacion.ts';
 
 /**
@@ -29,10 +31,24 @@ export function abrirBaseDeDatos(ruta: string): DatabaseSync {
   bd.exec('PRAGMA journal_mode = WAL');
   bd.exec('PRAGMA busy_timeout = 5000');
 
+  // El apodo vive aquí y no en cada puntuación: es una propiedad de la persona, no de cada
+  // modo que juega. Y así la unicidad la garantiza la propia base de datos.
+  bd.exec(`
+    CREATE TABLE IF NOT EXISTS jugadores (
+      jugador_id        TEXT PRIMARY KEY,
+      apodo             TEXT NOT NULL,
+      -- El apodo en minúsculas. La restricción UNIQUE va AQUÍ y no sobre 'apodo': es lo que
+      -- impide que existan "Krawid" y "krawid" a la vez. Al estar en la base de datos, dos
+      -- peticiones simultáneas no pueden colarse entre la comprobación y el guardado.
+      apodo_normalizado TEXT NOT NULL UNIQUE,
+      actualizado       TEXT NOT NULL
+    )
+  `);
+
   bd.exec(`
     CREATE TABLE IF NOT EXISTS puntuaciones (
       jugador_id  TEXT    NOT NULL,
-      apodo       TEXT    NOT NULL,
+      apodo       TEXT    NOT NULL DEFAULT '',
       modo        TEXT    NOT NULL,
       mejor1      INTEGER NOT NULL,
       mejor2      INTEGER NOT NULL,
@@ -45,14 +61,89 @@ export function abrirBaseDeDatos(ruta: string): DatabaseSync {
     )
   `);
 
-  // El orden de la clasificación es exactamente el de este índice, así que lo resuelve sin
-  // recorrer la tabla entera ni ordenar en memoria.
   bd.exec(`
     CREATE INDEX IF NOT EXISTS idx_clasificacion
     ON puntuaciones (modo, mejor1 DESC, mejor2 DESC, mejor3 DESC, logrado ASC)
   `);
 
+  migrarApodosAJugadores(bd);
+
   return bd;
+}
+
+/**
+ * Traslada los apodos que vivían dentro de `puntuaciones` a la tabla `jugadores`.
+ *
+ * Hace falta porque una versión anterior guardaba el apodo repetido en cada fila de
+ * puntuación. Es idempotente: si no hay nada que mover, no hace nada.
+ *
+ * Si dos personas tenían apodos que ahora chocan (mismo texto en distinta caja), el UNIQUE
+ * rechaza el segundo y ese jugador se queda sin apodo hasta que elija otro. Es preferible a
+ * fallar el arranque del servidor.
+ */
+function migrarApodosAJugadores(bd: DatabaseSync): void {
+  const filas = bd
+    .prepare("SELECT DISTINCT jugador_id, apodo FROM puntuaciones WHERE apodo <> '' ORDER BY jugador_id")
+    .all() as unknown as { jugador_id: string; apodo: string }[];
+
+  if (filas.length === 0) return;
+
+  const insertar = bd.prepare(
+    `INSERT OR IGNORE INTO jugadores (jugador_id, apodo, apodo_normalizado, actualizado)
+     VALUES (?, ?, ?, ?)`,
+  );
+  const ahora = new Date().toISOString();
+
+  for (const fila of filas) {
+    insertar.run(fila.jugador_id, fila.apodo, normalizarParaComparar(fila.apodo), ahora);
+  }
+
+  bd.exec("UPDATE puntuaciones SET apodo = ''");
+  console.log(`Migrados ${filas.length} apodos a la tabla de jugadores.`);
+}
+
+/**
+ * Reserva (o cambia) el apodo de un jugador.
+ *
+ * Falla si otro jugador ya lo tiene, comparando sin distinguir mayúsculas. Cambiarse el apodo
+ * por el que ya tenías no falla: es la misma persona.
+ */
+export function reclamarApodo(
+  bd: DatabaseSync,
+  jugadorId: string,
+  apodo: string,
+  ahora: () => Date = () => new Date(),
+): Resultado<string> {
+  const normalizado = normalizarParaComparar(apodo);
+
+  const duenyo = bd
+    .prepare('SELECT jugador_id FROM jugadores WHERE apodo_normalizado = ?')
+    .get(normalizado) as { jugador_id: string } | undefined;
+
+  if (duenyo && duenyo.jugador_id !== jugadorId) {
+    return { ok: false, error: 'Ese apodo ya está cogido. Prueba con otro.' };
+  }
+
+  try {
+    bd.prepare(
+      `INSERT INTO jugadores (jugador_id, apodo, apodo_normalizado, actualizado)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(jugador_id) DO UPDATE SET
+         apodo = excluded.apodo,
+         apodo_normalizado = excluded.apodo_normalizado,
+         actualizado = excluded.actualizado`,
+    ).run(jugadorId, apodo, normalizado, ahora().toISOString());
+
+    return { ok: true, valor: apodo };
+  } catch {
+    // El UNIQUE ha saltado: alguien reservó ese apodo entre la comprobación de arriba y esta
+    // línea. Improbable, pero es justo para lo que está la restricción en la base de datos.
+    return { ok: false, error: 'Ese apodo ya está cogido. Prueba con otro.' };
+  }
+}
+
+export function tieneApodo(bd: DatabaseSync, jugadorId: string): boolean {
+  return bd.prepare('SELECT 1 FROM jugadores WHERE jugador_id = ?').get(jugadorId) !== undefined;
 }
 
 interface FilaGuardada {
@@ -79,7 +170,7 @@ export function guardarPuntuacion(
   puntuacion: PuntuacionEntrante,
   ahora: () => Date = () => new Date(),
 ): Marcas {
-  const { jugadorId, apodo, modo, marcas } = puntuacion;
+  const { jugadorId, modo, marcas } = puntuacion;
   const momento = ahora().toISOString();
 
   const guardada = bd
@@ -88,32 +179,23 @@ export function guardarPuntuacion(
 
   if (!guardada) {
     bd.prepare(
-      `INSERT INTO puntuaciones (jugador_id, apodo, modo, mejor1, mejor2, mejor3, logrado, actualizado)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(jugadorId, apodo, modo, marcas[0], marcas[1], marcas[2], momento, momento);
+      `INSERT INTO puntuaciones (jugador_id, modo, mejor1, mejor2, mejor3, logrado, actualizado)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(jugadorId, modo, marcas[0], marcas[1], marcas[2], momento, momento);
     return marcas;
   }
 
   const previas: Marcas = [guardada.mejor1, guardada.mejor2, guardada.mejor3];
 
-  if (compararMarcas(marcas, previas) <= 0) {
-    // No mejora nada, pero el apodo puede haber cambiado: que se vea el nuevo igualmente.
-    bd.prepare('UPDATE puntuaciones SET apodo = ?, actualizado = ? WHERE jugador_id = ? AND modo = ?').run(
-      apodo,
-      momento,
-      jugadorId,
-      modo,
-    );
-    return previas;
-  }
+  if (compararMarcas(marcas, previas) <= 0) return previas;
 
   const logrado = marcas[0] > previas[0] ? momento : guardada.logrado;
 
   bd.prepare(
     `UPDATE puntuaciones
-     SET apodo = ?, mejor1 = ?, mejor2 = ?, mejor3 = ?, logrado = ?, actualizado = ?
+     SET mejor1 = ?, mejor2 = ?, mejor3 = ?, logrado = ?, actualizado = ?
      WHERE jugador_id = ? AND modo = ?`,
-  ).run(apodo, marcas[0], marcas[1], marcas[2], logrado, momento, jugadorId, modo);
+  ).run(marcas[0], marcas[1], marcas[2], logrado, momento, jugadorId, modo);
 
   return marcas;
 }
@@ -135,13 +217,20 @@ function aFila(fila: FilaConsulta): FilaClasificacion {
   };
 }
 
+// Se cruza con `jugadores` con JOIN normal (no LEFT JOIN) a propósito: quien no tenga apodo no
+// sale en la clasificación, que es justo la regla — mirar no exige identificarse, aparecer sí.
+const SELECT_CLASIFICACION = `
+  SELECT p.jugador_id AS jugadorId, j.apodo, p.mejor1, p.mejor2, p.mejor3, p.logrado
+  FROM puntuaciones p
+  JOIN jugadores j ON j.jugador_id = p.jugador_id
+`;
+
 export function leerClasificacion(bd: DatabaseSync, modo: Modo, limite: number): PuestoClasificacion[] {
   const filas = bd
     .prepare(
-      `SELECT jugador_id AS jugadorId, apodo, mejor1, mejor2, mejor3
-       FROM puntuaciones
-       WHERE modo = ?
-       ORDER BY mejor1 DESC, mejor2 DESC, mejor3 DESC, logrado ASC
+      `${SELECT_CLASIFICACION}
+       WHERE p.modo = ?
+       ORDER BY p.mejor1 DESC, p.mejor2 DESC, p.mejor3 DESC, p.logrado ASC
        LIMIT ?`,
     )
     .all(modo, limite) as unknown as FilaConsulta[];
@@ -150,32 +239,13 @@ export function leerClasificacion(bd: DatabaseSync, modo: Modo, limite: number):
 }
 
 /**
- * La tabla entera, tal cual, para copias de seguridad. **Incluye el jugador_id a propósito**:
- * una copia que no permita restaurar quién era cada quién no sirve de nada. Justo por eso la
- * ruta que la expone va protegida con clave (ver index.ts) — es lo contrario de la
- * clasificación pública, que nunca debe llevar identificadores.
- */
-export function exportarTodo(bd: DatabaseSync): unknown[] {
-  return bd
-    .prepare(
-      `SELECT jugador_id, apodo, modo, mejor1, mejor2, mejor3, logrado, actualizado
-       FROM puntuaciones
-       ORDER BY modo, mejor1 DESC`,
-    )
-    .all() as unknown[];
-}
-
-/**
  * Puesto de un jugador concreto aunque quede fuera de los primeros. Sirve para poder decirle
  * "vas 55.º" a quien no sale en la lista, en vez de dejarlo sin ninguna referencia.
- * Devuelve null si ese jugador no tiene puntuación en ese modo.
+ * Devuelve null si ese jugador no tiene puntuación en ese modo (o no tiene apodo).
  */
 export function leerPuestoDe(bd: DatabaseSync, modo: Modo, jugadorId: string): PuestoClasificacion | null {
   const propia = bd
-    .prepare(
-      `SELECT jugador_id AS jugadorId, apodo, mejor1, mejor2, mejor3, logrado
-       FROM puntuaciones WHERE jugador_id = ? AND modo = ?`,
-    )
+    .prepare(`${SELECT_CLASIFICACION} WHERE p.jugador_id = ? AND p.modo = ?`)
     .get(jugadorId, modo) as (FilaConsulta & { logrado: string }) | undefined;
 
   if (!propia) return null;
@@ -184,12 +254,14 @@ export function leerPuestoDe(bd: DatabaseSync, modo: Modo, jugadorId: string): P
   // es esa cuenta + 1, y como el criterio no admite empates, sale un número exacto.
   const { delante } = bd
     .prepare(
-      `SELECT COUNT(*) AS delante FROM puntuaciones
-       WHERE modo = ?
-         AND ( mejor1 > ?
-            OR (mejor1 = ? AND mejor2 > ?)
-            OR (mejor1 = ? AND mejor2 = ? AND mejor3 > ?)
-            OR (mejor1 = ? AND mejor2 = ? AND mejor3 = ? AND logrado < ?) )`,
+      `SELECT COUNT(*) AS delante
+       FROM puntuaciones p
+       JOIN jugadores j ON j.jugador_id = p.jugador_id
+       WHERE p.modo = ?
+         AND ( p.mejor1 > ?
+            OR (p.mejor1 = ? AND p.mejor2 > ?)
+            OR (p.mejor1 = ? AND p.mejor2 = ? AND p.mejor3 > ?)
+            OR (p.mejor1 = ? AND p.mejor2 = ? AND p.mejor3 = ? AND p.logrado < ?) )`,
     )
     .get(
       modo,
@@ -206,4 +278,22 @@ export function leerPuestoDe(bd: DatabaseSync, modo: Modo, jugadorId: string): P
     ) as { delante: number };
 
   return { ...aFila(propia), puesto: delante + 1 };
+}
+
+/**
+ * Todo, tal cual, para copias de seguridad. **Incluye los identificadores a propósito**: una
+ * copia que no permita restaurar quién era cada quién no sirve de nada. Justo por eso la ruta
+ * que la expone va protegida con clave (ver index.ts), al contrario que la clasificación
+ * pública, que nunca debe llevar identificadores.
+ */
+export function exportarTodo(bd: DatabaseSync): { jugadores: unknown[]; puntuaciones: unknown[] } {
+  return {
+    jugadores: bd.prepare('SELECT * FROM jugadores ORDER BY jugador_id').all() as unknown[],
+    puntuaciones: bd
+      .prepare(
+        `SELECT jugador_id, modo, mejor1, mejor2, mejor3, logrado, actualizado
+         FROM puntuaciones ORDER BY modo, mejor1 DESC`,
+      )
+      .all() as unknown[],
+  };
 }

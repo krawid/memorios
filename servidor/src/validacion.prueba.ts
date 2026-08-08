@@ -7,6 +7,8 @@ import {
   normalizarApodo,
   ordenarMarcas,
   validarPuntuacion,
+  validarReclamoApodo,
+  normalizarParaComparar,
   aPuestoPublico,
   type Marcas,
 } from './validacion.ts';
@@ -78,28 +80,28 @@ test('compararMarcas devuelve 0 solo si las tres coinciden (ahí decide la fecha
 });
 
 test('validarPuntuacion acepta una puntuación correcta y ordena las marcas', () => {
-  const r = validarPuntuacion({ jugadorId: 'abcd1234', apodo: 'Agus', modo: 'tranqui', marcas: [10, 14, 3] });
+  const r = validarPuntuacion({ jugadorId: 'abcd1234', modo: 'tranqui', marcas: [10, 14, 3] });
   assert.equal(r.ok, true);
   assert.deepEqual(r.ok && r.valor.marcas, [14, 10, 3]);
 });
 
 test('validarPuntuacion acepta una sola marca', () => {
-  const r = validarPuntuacion({ jugadorId: 'abcd1234', apodo: 'Agus', modo: 'tranqui', marcas: [14] });
+  const r = validarPuntuacion({ jugadorId: 'abcd1234', modo: 'tranqui', marcas: [14] });
   assert.equal(r.ok, true);
   assert.deepEqual(r.ok && r.valor.marcas, [14, 0, 0]);
 });
 
 test('validarPuntuacion acepta 0 rondas (perder en la primera es un resultado válido)', () => {
-  assert.equal(validarPuntuacion({ jugadorId: 'abcd1234', apodo: 'Agus', modo: 'tranqui', marcas: [0] }).ok, true);
+  assert.equal(validarPuntuacion({ jugadorId: 'abcd1234', modo: 'tranqui', marcas: [0] }).ok, true);
 });
 
 test('validarPuntuacion rechaza modos inventados', () => {
-  const r = validarPuntuacion({ jugadorId: 'abcd1234', apodo: 'Agus', modo: 'imposible', marcas: [3] });
+  const r = validarPuntuacion({ jugadorId: 'abcd1234', modo: 'imposible', marcas: [3] });
   assert.equal(r.ok, false);
 });
 
 test('validarPuntuacion rechaza marcas absurdas, negativas o decimales', () => {
-  const base = { jugadorId: 'abcd1234', apodo: 'Agus', modo: 'tranqui' };
+  const base = { jugadorId: 'abcd1234', modo: 'tranqui' };
   assert.equal(validarPuntuacion({ ...base, marcas: [9999] }).ok, false);
   assert.equal(validarPuntuacion({ ...base, marcas: [-1] }).ok, false);
   assert.equal(validarPuntuacion({ ...base, marcas: [3.5] }).ok, false);
@@ -107,7 +109,7 @@ test('validarPuntuacion rechaza marcas absurdas, negativas o decimales', () => {
 });
 
 test('validarPuntuacion rechaza identificadores raros o cortos', () => {
-  const base = { apodo: 'Agus', modo: 'tranqui', marcas: [3] };
+  const base = { modo: 'tranqui', marcas: [3] };
   assert.equal(validarPuntuacion({ ...base, jugadorId: 'corto' }).ok, false);
   assert.equal(validarPuntuacion({ ...base, jugadorId: 'con espacios!' }).ok, false);
 });
@@ -132,6 +134,38 @@ test('asignarPuestos numera sin empates', () => {
 
 test('asignarPuestos con la lista vacía no revienta', () => {
   assert.deepEqual(asignarPuestos([]), []);
+});
+
+test('normalizarParaComparar iguala mayúsculas en cualquier posición', () => {
+  const esperado = normalizarParaComparar('Krawid');
+  assert.equal(normalizarParaComparar('krawid'), esperado);
+  assert.equal(normalizarParaComparar('KRAWID'), esperado);
+  assert.equal(normalizarParaComparar('kRaWiD'), esperado, 'también en letras de en medio');
+});
+
+test('normalizarParaComparar iguala mayúsculas CON TILDES Y EÑES', () => {
+  // Esta es la razón de normalizar en JavaScript y no con COLLATE NOCASE de SQLite: su NOCASE
+  // solo pliega ASCII, y daría "MOISÉS" y "Moisés" por apodos distintos. Comprobado.
+  assert.equal(normalizarParaComparar('MOISÉS'), normalizarParaComparar('Moisés'));
+  assert.equal(normalizarParaComparar('BEGOÑA'), normalizarParaComparar('Begoña'));
+});
+
+test('normalizarParaComparar NO quita las tildes', () => {
+  // "Begoña" y "Begona" son nombres distintos; unificarlos sería decidir por la gente.
+  assert.notEqual(normalizarParaComparar('Begoña'), normalizarParaComparar('Begona'));
+});
+
+test('validarReclamoApodo acepta uno correcto y lo deja limpio', () => {
+  const r = validarReclamoApodo({ jugadorId: 'abcd1234', apodo: '  Moisés   G  ' });
+  assert.equal(r.ok, true);
+  assert.equal(r.ok && r.valor.apodo, 'Moisés G');
+});
+
+test('validarReclamoApodo rechaza apodos y jugadores no válidos', () => {
+  assert.equal(validarReclamoApodo({ jugadorId: 'abcd1234', apodo: '   ' }).ok, false);
+  assert.equal(validarReclamoApodo({ jugadorId: 'abcd1234', apodo: 'a'.repeat(21) }).ok, false);
+  assert.equal(validarReclamoApodo({ jugadorId: 'corto', apodo: 'Agus' }).ok, false);
+  assert.equal(validarReclamoApodo(null).ok, false);
 });
 
 test('aPuestoPublico NUNCA expone el jugadorId', () => {

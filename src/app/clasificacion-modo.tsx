@@ -59,7 +59,7 @@ export default function ClasificacionModoScreen() {
     const apodo = await obtenerApodo();
     if (apodo !== null) {
       const marcas = await cargarMarcas(modo);
-      if (mejorMarca(marcas) > 0) await publicarMarcas(jugadorId, apodo, modo, marcas);
+      if (mejorMarca(marcas) > 0) await publicarMarcas(jugadorId, modo, marcas);
     }
 
     return leerClasificacion(modo, jugadorId);

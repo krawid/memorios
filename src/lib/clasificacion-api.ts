@@ -42,6 +42,42 @@ async function pedir(ruta: string, opciones: RequestInit = {}): Promise<Response
   }
 }
 
+export type ResultadoApodo =
+  | { ok: true; apodo: string }
+  | { ok: false; error: string; cogido: boolean };
+
+/**
+ * Reserva el apodo en el servidor. Es lo único que puede fallar de forma que la persona tenga
+ * que hacer algo (elegir otro), y por eso va separado de publicar marcas: si fuera en cada
+ * envío, una partida podría fallar por un choque de apodos justo al terminarla.
+ *
+ * `cogido` distingue "ese apodo es de otro" de "no hay conexión", que se resuelven distinto.
+ */
+export async function reclamarApodo(jugadorId: string, apodo: string): Promise<ResultadoApodo> {
+  try {
+    const respuesta = await pedir('/apodo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jugadorId, apodo }),
+    });
+
+    if (respuesta.ok) return { ok: true, apodo };
+
+    const datos = (await respuesta.json().catch(() => ({}))) as { error?: string };
+    return {
+      ok: false,
+      error: datos.error ?? 'No se pudo guardar el apodo.',
+      cogido: respuesta.status === 409,
+    };
+  } catch {
+    return {
+      ok: false,
+      error: 'No hay conexión con el servidor. Inténtalo de nuevo.',
+      cogido: false,
+    };
+  }
+}
+
 /**
  * Publica las marcas. Nunca lanza: si falla, se pierde este envío y ya está — la app reenvía
  * sus mejores marcas cada vez que se abre la clasificación, y el servidor se queda siempre con
@@ -49,17 +85,12 @@ async function pedir(ruta: string, opciones: RequestInit = {}): Promise<Response
  *
  * Devuelve true solo si el servidor confirmó.
  */
-export async function publicarMarcas(
-  jugadorId: string,
-  apodo: string,
-  modo: GameMode,
-  marcas: Marcas,
-): Promise<boolean> {
+export async function publicarMarcas(jugadorId: string, modo: GameMode, marcas: Marcas): Promise<boolean> {
   try {
     const respuesta = await pedir('/puntuaciones', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jugadorId, apodo, modo, marcas }),
+      body: JSON.stringify({ jugadorId, modo, marcas }),
     });
     return respuesta.ok;
   } catch {

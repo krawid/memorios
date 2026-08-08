@@ -27,11 +27,20 @@ const MAX_JUGADOR_ID = 64;
  */
 export type Marcas = readonly [number, number, number];
 
+/**
+ * Publicar marcas ya NO lleva apodo: el apodo se reserva aparte (ver validarReclamoApodo). Si
+ * fuera en cada envío, una partida podría fallar por un choque de apodos justo al terminar, que
+ * es el peor momento posible para enterarse.
+ */
 export interface PuntuacionEntrante {
   jugadorId: string;
-  apodo: string;
   modo: Modo;
   marcas: Marcas;
+}
+
+export interface ReclamoApodo {
+  jugadorId: string;
+  apodo: string;
 }
 
 export type Resultado<T> = { ok: true; valor: T } | { ok: false; error: string };
@@ -58,6 +67,22 @@ export function normalizarApodo(valor: unknown): string | null {
   const limpio = valor.trim().replace(/\s+/g, ' ');
   if (limpio.length === 0 || limpio.length > MAX_APODO) return null;
   return limpio;
+}
+
+/**
+ * Forma con la que se comparan dos apodos para decidir si son "el mismo". Los apodos son
+ * únicos sin distinguir mayúsculas: "Krawid" y "krawid" son la misma persona.
+ *
+ * ⚠️ Se normaliza en JavaScript y NO con `COLLATE NOCASE` de SQLite, que es lo que parecería
+ * natural. Motivo comprobado: el NOCASE de SQLite **solo pliega ASCII**, así que da por
+ * distintos "MOISÉS" y "Moisés", o "BEGOÑA" y "Begoña". En español eso deja pasar la mitad de
+ * los nombres. `toLowerCase` de JavaScript sí entiende tildes y eñes.
+ *
+ * Las tildes NO se quitan a propósito: "Begoña" y "Begona" son nombres distintos, y unificarlos
+ * sería decidir por la gente cómo se llama.
+ */
+export function normalizarParaComparar(apodo: string): string {
+  return apodo.toLowerCase();
 }
 
 /**
@@ -112,14 +137,9 @@ export function validarPuntuacion(cuerpo: unknown): Resultado<PuntuacionEntrante
     return { ok: false, error: 'Se esperaba un objeto JSON' };
   }
 
-  const { jugadorId, apodo, modo, marcas } = cuerpo as Record<string, unknown>;
+  const { jugadorId, modo, marcas } = cuerpo as Record<string, unknown>;
 
   if (!esJugadorId(jugadorId)) return { ok: false, error: 'jugadorId no válido' };
-
-  const apodoLimpio = normalizarApodo(apodo);
-  if (apodoLimpio === null) {
-    return { ok: false, error: `El apodo debe tener entre 1 y ${MAX_APODO} caracteres` };
-  }
 
   if (!esModo(modo)) return { ok: false, error: 'modo no válido' };
 
@@ -131,7 +151,24 @@ export function validarPuntuacion(cuerpo: unknown): Resultado<PuntuacionEntrante
     };
   }
 
-  return { ok: true, valor: { jugadorId, apodo: apodoLimpio, modo, marcas: marcasOrdenadas } };
+  return { ok: true, valor: { jugadorId, modo, marcas: marcasOrdenadas } };
+}
+
+export function validarReclamoApodo(cuerpo: unknown): Resultado<ReclamoApodo> {
+  if (typeof cuerpo !== 'object' || cuerpo === null) {
+    return { ok: false, error: 'Se esperaba un objeto JSON' };
+  }
+
+  const { jugadorId, apodo } = cuerpo as Record<string, unknown>;
+
+  if (!esJugadorId(jugadorId)) return { ok: false, error: 'jugadorId no válido' };
+
+  const apodoLimpio = normalizarApodo(apodo);
+  if (apodoLimpio === null) {
+    return { ok: false, error: `El apodo debe tener entre 1 y ${MAX_APODO} caracteres` };
+  }
+
+  return { ok: true, valor: { jugadorId, apodo: apodoLimpio } };
 }
 
 export interface FilaClasificacion {

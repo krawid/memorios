@@ -10,7 +10,7 @@ import { cargarTodasLasMarcas } from '@/game/high-score-store';
 import { mejorMarca } from '@/game/marcas';
 import { GAME_MODES } from '@/game/modes';
 import { errorDeApodo, MAX_APODO } from '@/lib/apodo';
-import { publicarMarcas } from '@/lib/clasificacion-api';
+import { publicarMarcas, reclamarApodo } from '@/lib/clasificacion-api';
 import { guardarApodo, obtenerApodo, obtenerJugadorId } from '@/lib/identidad';
 
 export default function ApodoScreen() {
@@ -35,7 +35,21 @@ export default function ApodoScreen() {
     }
 
     setGuardando(true);
-    const limpio = await guardarApodo(texto);
+    const jugadorId = await obtenerJugadorId();
+
+    // Se reserva PRIMERO en el servidor y solo se guarda en el móvil si lo acepta. Al revés,
+    // alguien podría quedarse con un apodo local que en la clasificación pertenece a otro, y
+    // aparecería con un nombre que no es el suyo.
+    const reserva = await reclamarApodo(jugadorId, texto.trim());
+
+    if (!reserva.ok) {
+      setGuardando(false);
+      setError(reserva.error);
+      AccessibilityInfo.announceForAccessibility(reserva.error);
+      return;
+    }
+
+    const limpio = await guardarApodo(reserva.apodo);
     if (limpio === null) {
       setGuardando(false);
       return;
@@ -43,11 +57,10 @@ export default function ApodoScreen() {
 
     // Al estrenar apodo se publican de golpe las marcas que ya tuviera guardadas: si no, quien
     // lleva semanas jugando aparecería con la clasificación vacía hasta la siguiente partida.
-    const jugadorId = await obtenerJugadorId();
     const todas = await cargarTodasLasMarcas();
     await Promise.all(
       GAME_MODES.filter((modo) => mejorMarca(todas[modo]) > 0).map((modo) =>
-        publicarMarcas(jugadorId, limpio, modo, todas[modo]),
+        publicarMarcas(jugadorId, modo, todas[modo]),
       ),
     );
 
