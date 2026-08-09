@@ -1,4 +1,4 @@
-import { AccessibilityRole, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Pressable, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -16,11 +16,16 @@ import { Direction } from '@/game/types';
 import { triggerDirectionHaptic, triggerReverseHaptic } from '@/lib/haptics';
 import { playTone } from '@/lib/sounds';
 
-// Mismo trait y misma razón que en FlickSurface (ver ese archivo para el porqué completo): con
-// accessibilityRole="button" normal, VoiceOver hace su ciclo de foco+anuncio en cada toque, y esa
-// voz —con la atenuación de audio que arrastra— tapaba el tono que esta pantalla existe para
-// dejar oír con claridad. Con el trait, el toque llega en crudo y VoiceOver no interpone nada.
-const ALLOWS_DIRECT_INTERACTION_ROLE = 'allowsDirectInteraction' as AccessibilityRole;
+// Aquí las filas son BOTONES normales, no superficies de interacción directa como en la
+// partida. Se probó con el trait `allowsDirectInteraction` para que la voz de VoiceOver no
+// tapara el tono, y el remedio salía peor que la enfermedad: con interacción directa hay que
+// tocar la fila a ciegas en vez de activarla con el doble toque de siempre, que es como se
+// maneja todo lo demás. En una pantalla para APRENDER, cambiar la forma de pulsar confunde más
+// de lo que ayuda.
+//
+// El problema de que la voz tape el tono se resuelve contándoselo a la persona (ver el aviso de
+// arriba de la pantalla): silenciar el habla de VoiceOver es un gesto que ya conoce quien lo
+// usa, y así decide cuándo quiere oír los tonos limpios.
 
 export default function LearnMappingScreen() {
   function handlePress(direction: Direction) {
@@ -43,13 +48,20 @@ export default function LearnMappingScreen() {
             ordenadas de grave a aguda; tócalas las veces que necesites antes de jugar.
           </ThemedText>
 
+          {/* Este aviso sustituye a un apaño técnico: antes las filas usaban interacción directa
+              para que la voz no tapara el tono, pero eso obligaba a tocarlas a ciegas en vez de
+              activarlas con el doble toque normal. Es mejor contarlo y que cada cual decida. */}
+          <ThemedText type="default" themeColor="textSecondary" style={styles.intro}>
+            Si usas VoiceOver, silencia el habla antes de pulsar (toca con tres dedos dos veces):
+            así los sonidos se oyen limpios, sin la voz encima.
+          </ThemedText>
+
           <ThemedView style={styles.list}>
             {DIRECTIONS_BY_PITCH.map((direction) => (
               <Pressable
                 key={direction}
                 onPress={() => handlePress(direction)}
-                accessible
-                accessibilityRole={ALLOWS_DIRECT_INTERACTION_ROLE}
+                accessibilityRole="button"
                 accessibilityLabel={`${DIRECTION_SPOKEN_NAME[direction]}: ${DIRECTION_COLOR_NAMES[direction]}`}
                 accessibilityHint="Toca para escuchar el sonido y sentir la vibración de esta dirección"
                 style={({ pressed }) => [
@@ -90,8 +102,7 @@ export default function LearnMappingScreen() {
 
           <Pressable
             onPress={handleReversePress}
-            accessible
-            accessibilityRole={ALLOWS_DIRECT_INTERACTION_ROLE}
+            accessibilityRole="button"
             accessibilityLabel="Aviso de ronda invertida"
             accessibilityHint="Toca para escuchar el sonido y sentir la vibración de este aviso"
             style={({ pressed }) => [styles.row, styles.reverseRow, pressed && styles.rowPressed]}

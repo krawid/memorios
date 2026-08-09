@@ -98,6 +98,32 @@ export async function publicarMarcas(jugadorId: string, modo: GameMode, marcas: 
   }
 }
 
+/**
+ * Publica las marcas y, si el servidor no nos conoce, vuelve a reservar el apodo y reintenta.
+ *
+ * Hace falta porque el móvil y el servidor pueden desincronizarse: se restaura una copia de
+ * seguridad antigua, se pierden los datos, o la reserva original nunca llegó. En esa situación
+ * la app tiene el apodo guardado —así que no lo vuelve a pedir— pero el servidor rechaza todos
+ * los envíos, y la persona se queda invisible en la clasificación **para siempre y en
+ * silencio**. Pasó de verdad. Con esto se arregla solo en el siguiente envío.
+ *
+ * Si el apodo lo ha cogido otra persona mientras tanto, no se puede hacer nada a escondidas:
+ * devuelve false y la persona tendrá que elegir otro.
+ */
+export async function sincronizarMarcas(
+  jugadorId: string,
+  apodo: string,
+  modo: GameMode,
+  marcas: Marcas,
+): Promise<boolean> {
+  if (await publicarMarcas(jugadorId, modo, marcas)) return true;
+
+  const reserva = await reclamarApodo(jugadorId, apodo);
+  if (!reserva.ok) return false;
+
+  return publicarMarcas(jugadorId, modo, marcas);
+}
+
 export type ResultadoClasificacion =
   | { ok: true; clasificacion: Clasificacion }
   | { ok: false; error: string };

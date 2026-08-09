@@ -12,7 +12,7 @@ import { mejorMarca } from '@/game/marcas';
 import { GAME_MODES, GameMode } from '@/game/modes';
 import {
   leerClasificacion,
-  publicarMarcas,
+  sincronizarMarcas,
   type Clasificacion,
   type PuestoClasificacion,
   type ResultadoClasificacion,
@@ -59,7 +59,7 @@ export default function ClasificacionModoScreen() {
     const apodo = await obtenerApodo();
     if (apodo !== null) {
       const marcas = await cargarMarcas(modo);
-      if (mejorMarca(marcas) > 0) await publicarMarcas(jugadorId, modo, marcas);
+      if (mejorMarca(marcas) > 0) await sincronizarMarcas(jugadorId, apodo, modo, marcas);
     }
 
     return leerClasificacion(modo, jugadorId);

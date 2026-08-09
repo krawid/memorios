@@ -15,7 +15,7 @@ import { GAME_MODES, GameMode, MODE_CONFIG, playbackTimingForRound } from '@/gam
 import { evaluateInput } from '@/game/round-evaluator';
 import { createSeededRandom } from '@/game/seeded-random';
 import { Direction } from '@/game/types';
-import { publicarMarcas } from '@/lib/clasificacion-api';
+import { sincronizarMarcas } from '@/lib/clasificacion-api';
 import { triggerDirectionHaptic, triggerFailHaptic, triggerReverseHaptic } from '@/lib/haptics';
 import { obtenerApodo, obtenerJugadorId } from '@/lib/identidad';
 import { playTone } from '@/lib/sounds';
@@ -129,7 +129,7 @@ export default function GameScreen() {
       if (apodo === null) return; // sin apodo no se aparece en la clasificación
 
       const jugadorId = await obtenerJugadorId();
-      publicarMarcas(jugadorId, mode, marcas);
+      sincronizarMarcas(jugadorId, apodo, mode, marcas);
     });
   }, [phase, isPasalo, mode, score]);
 
