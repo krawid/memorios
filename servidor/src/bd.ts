@@ -178,9 +178,13 @@ export function guardarPuntuacion(
     .get(jugadorId, modo) as FilaGuardada | undefined;
 
   if (!guardada) {
+    // 'apodo' va explícito y vacío aunque ya no se lea de aquí (vive en `jugadores`): en
+    // despliegues de antes de esa migración la columna quedó NOT NULL sin valor por defecto, y
+    // `CREATE TABLE IF NOT EXISTS` nunca toca una tabla que ya existe para dársela. Mandarlo
+    // siempre hace que el INSERT funcione igual con el esquema viejo que con el nuevo.
     bd.prepare(
-      `INSERT INTO puntuaciones (jugador_id, modo, mejor1, mejor2, mejor3, logrado, actualizado)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO puntuaciones (jugador_id, apodo, modo, mejor1, mejor2, mejor3, logrado, actualizado)
+       VALUES (?, '', ?, ?, ?, ?, ?, ?)`,
     ).run(jugadorId, modo, marcas[0], marcas[1], marcas[2], momento, momento);
     return marcas;
   }
